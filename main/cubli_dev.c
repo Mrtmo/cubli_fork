@@ -13,6 +13,8 @@
 #include "driver/ledc.h"
 #include "driver/gpio.h"
 #include "as5600.h"
+#include "unity.h"
+#include "hal/gpio_hal.h"
 
 /** as5600 配置 */
 #define SCL_IO_PIN GPIO_NUM_14
@@ -27,6 +29,7 @@
 int pwm1 = GPIO_NUM_25;             // 电机驱动引脚1
 int pwm2 = GPIO_NUM_26;             // 电机驱动引脚2
 int pwm3 = GPIO_NUM_27;             // 电机驱动引脚3
+int pwm_enable = GPIO_NUM_33;       //
 float voltage_power_supply = 12.0;  // 电机额定电压
 float voltage_power_limit = 12.0;   // 电机额定电压
 int pole_pairs = 7;                 // 电机极对数
@@ -41,7 +44,7 @@ float shaft_angle = 0;              // 机械角度
 void motor_pwm_init(void)
 {
     gpio_config_t pwm_cfg = {
-        .pin_bit_mask = 1 << pwm1 | 1 << pwm2 | 1 << pwm3,
+        .pin_bit_mask = 1 << pwm1 | 1 << pwm2 | 1 << pwm3 | 1 << pwm_enable,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .mode = GPIO_MODE_OUTPUT,
@@ -49,8 +52,6 @@ void motor_pwm_init(void)
     };
 
     gpio_config(&pwm_cfg);
-    
-    
 
     ledc_timer_config_t motor_ledc_config_t = {
         .speed_mode = LEDC_LOW_SPEED_MODE,
@@ -125,7 +126,7 @@ void set_phase_voltage(float Ud, float Uq, float angle)
 
 // 开环速度函数
 float velocityOpenloop(float target_velocity)
-{    
+{
     unsigned long now_us = esp_timer_get_time(); // 获取从开启芯片以来的微秒数，它的精度是 4 微秒。 micros() 返回的是一个无符号长整型（unsigned long）的值
     // ESP_LOGI("main", "%ld", now_us);q1
     // 计算当前每个Loop的运行时间间隔
@@ -212,7 +213,7 @@ void app_main(void)
 {
     motor_pwm_init();
     // xTaskCreatePinnedToCore(task_as5600_test, "task_as5600", 2048 * 4, NULL, 3, NULL, 1);
-    while(1)
+    while (1)
     {
         velocityOpenloop(10);
     }
