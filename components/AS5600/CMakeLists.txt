@@ -1,3 +1,4 @@
-idf_component_register(SRCS "as5600.c"
-                    INCLUDE_DIRS "."
-                    PRIV_REQUIRES driver)
+set(COMPONENT_SRCS "as5600.c")
+set(COMPONENT_ADD_INCLUDEDIRS ".")
+set(COMPONENT_PRIV_REQUIRES "driver" "i2c_device")
+register_component()
