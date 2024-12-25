@@ -23,17 +23,18 @@ float Ud = 0, Uq = 0;               // 帕克变换前磁极直角坐标系分�
 float zero_electric_angle = 0;      // 0电度角偏移量
 float open_loop_timestamp = 0;      // 开环控制时间戳
 float shaft_angle = 0;              // 机械角度
+gpio_num_t g_pwm_enable = -1;
 
-void motor_pwm_init(uint8_t pwm1, uint8_t pwm2, uint8_t pwm3, uint8_t pwm_enable)
+void motor_pwm_init(gpio_num_t pwm1, gpio_num_t pwm2, gpio_num_t pwm3, gpio_num_t pwm_enable)
 {
+    g_pwm_enable = pwm_enable;
     gpio_config_t pwm_cfg = {
-        .pin_bit_mask = 1 << pwm1 | 1 << pwm2 | 1 << pwm3 | 1 << pwm_enable,
+        .pin_bit_mask = 1 << pwm1 | 1 << pwm2 | 1 << pwm3 | 1llu << pwm_enable,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .mode = GPIO_MODE_OUTPUT,
         .intr_type = GPIO_INTR_DISABLE,
     };
-
     gpio_config(&pwm_cfg);
 
     ledc_timer_config_t motor_ledc_config_t = {
@@ -43,6 +44,10 @@ void motor_pwm_init(uint8_t pwm1, uint8_t pwm2, uint8_t pwm3, uint8_t pwm_enable
         .freq_hz = 5000,
         .duty_resolution = LEDC_TIMER_12_BIT,
     };
+    ledc_timer_config(&motor_ledc_config_t);
+    motor_ledc_config_t.timer_num = LEDC_TIMER_1;
+    ledc_timer_config(&motor_ledc_config_t);
+    motor_ledc_config_t.timer_num = LEDC_TIMER_2;
     ledc_timer_config(&motor_ledc_config_t);
 
     ledc_channel_config_t motor_ledc_channal_config_t = {
@@ -54,12 +59,15 @@ void motor_pwm_init(uint8_t pwm1, uint8_t pwm2, uint8_t pwm3, uint8_t pwm_enable
         .intr_type = LEDC_INTR_DISABLE,
     };
     ledc_channel_config(&motor_ledc_channal_config_t);
-    motor_ledc_channal_config_t.channel = LEDC_CHANNEL_1;
     motor_ledc_channal_config_t.gpio_num = pwm2;
+    motor_ledc_channal_config_t.channel = LEDC_CHANNEL_1;
+    motor_ledc_channal_config_t.timer_sel = LEDC_TIMER_1;
     ledc_channel_config(&motor_ledc_channal_config_t);
-    motor_ledc_channal_config_t.channel = LEDC_CHANNEL_2;
     motor_ledc_channal_config_t.gpio_num = pwm3;
+    motor_ledc_channal_config_t.channel = LEDC_CHANNEL_2;
+    motor_ledc_channal_config_t.timer_sel = LEDC_TIMER_2;
     ledc_channel_config(&motor_ledc_channal_config_t);
+    motor_disable();
 }
 
 // 电角度求解
@@ -86,9 +94,13 @@ void set_pwm(float Ua, float Ub, float Uc)
     dc_b = _constrain(Ub / voltage_power_supply, 0.0f, 1);
     dc_c = _constrain(Uc / voltage_power_supply, 0.0f, 1);
     // 设置pwm输出
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, dc_a);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, dc_b);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2, dc_c);
+    // printf("duty: a-b-c: %f, %f, %f\n", dc_a, dc_b, dc_c);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, dc_a * 4095);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, dc_b * 4095);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2, dc_c * 4095);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2);
 }
 
 // 设置三相电压
@@ -106,6 +118,20 @@ void set_phase_voltage(float Ud, float Uq, float angle)
     // 设置 pwm 输出
     set_pwm(Ua, Ub, Uc);
 }
+
+void motor_enable(void)
+{
+    gpio_set_direction(g_pwm_enable, GPIO_MODE_OUTPUT);
+    gpio_set_level(g_pwm_enable, 1);
+    printf("en_pin = %d, %llx\n", g_pwm_enable, ((uint64_t)1) << g_pwm_enable);
+    gpio_dump_io_configuration(stdout, ((uint64_t)1) << g_pwm_enable);
+}
+
+void motor_disable(void)
+{
+    gpio_set_direction(g_pwm_enable, GPIO_MODE_INPUT);
+}
+
 
 // 开环速度函数
 float velocity_openloop(float target_velocity)
@@ -128,7 +154,7 @@ float velocity_openloop(float target_velocity)
     // 最大只能设置为Uq = voltage_power_supply/2，否则ua,ub,uc会超出供电电压限幅
     Uq = voltage_power_supply / 3;
 
-    set_phase_voltage(Uq, 0, _electrical_angle(shaft_angle, 7));
+    set_phase_voltage(0, Uq, _electrical_angle(shaft_angle, 7));
 
     open_loop_timestamp = now_us; // 用于计算下一个时间间隔
 
