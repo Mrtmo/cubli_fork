@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include "esp_check.h"
 
+esp_err_t can_init();
+esp_err_t can_enable();
+esp_err_t can_disable();
+
 
 
 #endif
