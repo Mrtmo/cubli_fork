@@ -13,6 +13,8 @@
 
 #include "as5600.h"
 #include "motor2204.h"
+#include "button.h"
+#include "can_comm.h"
 
 /** as5600 配置 */
 #define AS5600_SCL_IO_PIN GPIO_NUM_14
@@ -20,6 +22,10 @@
 #define AS5600_ADDRESS 0x36
 #define PORT_NUMBER -1
 #define LENGTH 2
+
+/** 按键引脚配置 */
+#define MCU_SWITCH_1    GPIO_NUM_22
+#define MCU_SWITCH_2    GPIO_NUM_18
 
 /** motor 配置 */
 gpio_num_t pwm1 = GPIO_NUM_25;       // 电机驱动引脚1
@@ -78,19 +84,17 @@ void task_motor_test(void *params)
     motor_enable();
     while (1)
     {
-        velocity_openloop(10);
+        velocity_openloop(10.f);
     }
 }
+
+
 
 void app_main(void)
 {
     // task_mpu_test(NULL);
     // xTaskCreatePinnedToCore(task_as5600_test, "task_as5600", 2048 * 4, NULL, 3, NULL, 1);
     // xTaskCreatePinnedToCore(task_motor_test, "task_motor", 2048 * 4, NULL, 3, NULL, 1);
-    motor_pwm_init(pwm1, pwm2, pwm3, pwm_enable);
-    motor_enable();
-    while (1)
-    {
-        velocity_openloop(10.0f);
-    }
+    xTaskCreatePinnedToCore(task_btn_test, "task_btn", 2048 * 4, NULL, 3, NULL, 1);
+    // xTaskCreatePinnedToCore(task_btn_test_queue, "task_btn", 2048 * 4, NULL, 3, NULL, 1);
 }
