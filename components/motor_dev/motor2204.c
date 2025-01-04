@@ -1,17 +1,21 @@
-#include "math.h"
+#include <math.h>
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/i2c_master.h"
 #include "driver/ledc.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
 
 #include "motor2204.h"
 
+// 3/2 pi
+#define _3PI_2 4.71238898038f
+
 /** pwm引脚设置 */
 #define _constrain(amt, low, high) (amt < low) ? low : ((amt > high) ? high : amt)
+
+i2c_as5600_handle_t motor_as5600_handle;
 
 float voltage_power_supply = 12.0;  // 电机额定电压
 float voltage_power_limit = 12.0;   // 电机额定电压
@@ -23,7 +27,63 @@ float Ud = 0, Uq = 0;               // 帕克变换前磁极直角坐标系分�
 float zero_electric_angle = 0;      // 0电度角偏移量
 float open_loop_timestamp = 0;      // 开环控制时间戳
 float shaft_angle = 0;              // 机械角度
-gpio_num_t g_pwm_enable = -1;
+gpio_num_t g_pwm_enable = 1;
+
+int DIR = 1;
+
+// 电角度求解
+static float _electrical_angle(float shaft_angle, int pole_pairs)
+{
+    return shaft_angle * pole_pairs;
+}
+
+// 电角度归一化
+static float _normalize_angle(float angle)
+{
+    float n_angle = fmod(angle, 2 * M_PI);
+    return (n_angle > 0) ? n_angle : n_angle + 2 * M_PI;
+}
+
+// 设置 pwm 到控制器输出
+static void set_pwm(float Ua, float Ub, float Uc)
+{
+    Ua = _constrain(Ua, 0.0f, voltage_power_limit);
+    Ub = _constrain(Ub, 0.0f, voltage_power_limit);
+    Uc = _constrain(Uc, 0.0f, voltage_power_limit);
+    // 计算占空比
+    dc_a = _constrain(Ua / voltage_power_supply, 0.0f, 1);
+    dc_b = _constrain(Ub / voltage_power_supply, 0.0f, 1);
+    dc_c = _constrain(Uc / voltage_power_supply, 0.0f, 1);
+    // 设置pwm输出
+    // printf("duty: a-b-c: %f, %f, %f\n", dc_a, dc_b, dc_c);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, dc_a * 4095);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, dc_b * 4095);
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2, dc_c * 4095);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2);
+}
+
+// 设置三相电压
+static void set_phase_voltage(float Ud, float Uq, float angle)
+{
+    // 计算归一化电度角
+    angle = _normalize_angle(angle + zero_electric_angle);
+    // 帕克逆变换
+    U_alpha = Ud * cos(angle) - Uq * sin(angle);
+    U_beta = Ud * sin(angle) + Uq * cos(angle);
+    // 克拉克逆变换
+    Ua = U_alpha + voltage_power_supply / 2;
+    Ub = (sqrt(3) * U_beta - U_alpha) / 2 + voltage_power_supply / 2;
+    Uc = (-U_alpha - sqrt(3) * U_beta) / 2 + voltage_power_supply / 2;
+    // 设置 pwm 输出
+    set_pwm(Ua, Ub, Uc);
+}
+
+static float _electricalAngle(void)
+{
+    return _normalize_angle((float)(DIR *  pole_pairs) * as5600_get_angle(motor_as5600_handle) - zero_electric_angle);
+}
 
 void motor_pwm_init(gpio_num_t pwm1, gpio_num_t pwm2, gpio_num_t pwm3, gpio_num_t pwm_enable)
 {
@@ -70,53 +130,9 @@ void motor_pwm_init(gpio_num_t pwm1, gpio_num_t pwm2, gpio_num_t pwm3, gpio_num_
     motor_disable();
 }
 
-// 电角度求解
-float _electrical_angle(float shaft_angle, int pole_pairs)
+void motor_link_as5600(i2c_as5600_handle_t as5600_handle)
 {
-    return shaft_angle * pole_pairs;
-}
-
-// 电角度归一化
-float _normalize_angle(float angle)
-{
-    float n_angle = fmod(angle, 2 * M_PI);
-    return (n_angle > 0) ? n_angle : n_angle + 2 * M_PI;
-}
-
-// 设置 pwm 到控制器输出
-void set_pwm(float Ua, float Ub, float Uc)
-{
-    Ua = _constrain(Ua, 0.0f, voltage_power_limit);
-    Ub = _constrain(Ub, 0.0f, voltage_power_limit);
-    Uc = _constrain(Uc, 0.0f, voltage_power_limit);
-    // 计算占空比
-    dc_a = _constrain(Ua / voltage_power_supply, 0.0f, 1);
-    dc_b = _constrain(Ub / voltage_power_supply, 0.0f, 1);
-    dc_c = _constrain(Uc / voltage_power_supply, 0.0f, 1);
-    // 设置pwm输出
-    // printf("duty: a-b-c: %f, %f, %f\n", dc_a, dc_b, dc_c);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, dc_a * 4095);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, dc_b * 4095);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2, dc_c * 4095);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_2);
-}
-
-// 设置三相电压
-void set_phase_voltage(float Ud, float Uq, float angle)
-{
-    // 计算归一化电度角
-    angle = _normalize_angle(angle + zero_electric_angle);
-    // 帕克逆变换
-    U_alpha = Ud * cos(angle) - Uq * sin(angle);
-    U_beta = Ud * sin(angle) + Uq * cos(angle);
-    // 克拉克逆变换
-    Ua = U_alpha + voltage_power_supply / 2;
-    Ub = (sqrt(3) * U_beta - U_alpha) / 2 + voltage_power_supply / 2;
-    Uc = (-U_alpha - sqrt(3) * U_beta) / 2 + voltage_power_supply / 2;
-    // 设置 pwm 输出
-    set_pwm(Ua, Ub, Uc);
+    motor_as5600_handle = as5600_handle;
 }
 
 void motor_enable(void)
@@ -159,4 +175,24 @@ float velocity_openloop(float target_velocity)
     open_loop_timestamp = now_us; // 用于计算下一个时间间隔
 
     return Uq;
+}
+
+void weizhi_loop(float motor_target)
+{
+    float Sensor_Angle = 0.f;
+    float Kp = 0.133;
+
+
+    // 获取 0 电度角时编码器角度
+    set_phase_voltage(0, 3, _3PI_2);
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    zero_electric_angle = _electricalAngle();
+    set_phase_voltage(0, 0, _3PI_2);
+
+    while(1)
+    {
+        Sensor_Angle = as5600_get_angle_cycle(motor_as5600_handle);
+        printf("as_angle: %f, minns_angle: %f, zero_angle: %f\n", Sensor_Angle, motor_target - DIR * Sensor_Angle * 180 / M_PI, zero_electric_angle);
+        set_phase_voltage(0, _constrain(Kp * (motor_target - DIR * Sensor_Angle) * 180 / M_PI, -6.0, 6.0), _electricalAngle());
+    }
 }

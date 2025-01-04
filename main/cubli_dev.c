@@ -21,7 +21,6 @@
 #define AS5600_SDA_IO_PIN GPIO_NUM_4
 #define AS5600_ADDRESS 0x36
 #define PORT_NUMBER -1
-#define LENGTH 2
 
 /** 按键引脚配置 */
 #define MCU_SWITCH_1    GPIO_NUM_22
@@ -61,31 +60,30 @@ void task_mpu_test(void * params)
     printf("id = %d\n", data[0]);
 }
 
-void task_as5600_test(void *param)
+i2c_as5600_handle_t as5600_handle;
+void task_as5600_update(void *param)
 {
-    i2c_as5600_handle_t as5600_handle;
-    uint32_t block_addr = 0x0E;
-    uint8_t read_buf[LENGTH];
 
-    ESP_ERROR_CHECK(i2c_as5600_init(AS5600_ADDRESS, AS5600_SCL_IO_PIN, AS5600_SDA_IO_PIN, &as5600_handle));
+    ESP_ERROR_CHECK(as5600_init(AS5600_ADDRESS, AS5600_SCL_IO_PIN, AS5600_SDA_IO_PIN, &as5600_handle));
     ESP_LOGI("main", "as5600 init");
 
     while (1)
     {
-        ESP_ERROR_CHECK(i2c_as5600_read(as5600_handle, block_addr, read_buf, LENGTH));
-        printf("%4d\n", (read_buf[0] << 8) + read_buf[1]);
-        vTaskDelay(pdMS_TO_TICKS(500));
+        ESP_ERROR_CHECK(as5600_update(as5600_handle));
+        printf("%f, %f\n", as5600_get_angle(as5600_handle), as5600_get_angle_cycle(as5600_handle));
     }
 }
 
 void task_motor_test(void *params)
 {
+    motor_link_as5600(as5600_handle);
     motor_pwm_init(pwm1, pwm2, pwm3, pwm_enable);
     motor_enable();
-    while (1)
-    {
-        velocity_openloop(10.f);
-    }
+    // while (1)
+    // {
+    //     velocity_openloop(10.f);
+    // }
+    weizhi_loop(45.f / 180 * M_PI);
 }
 
 
@@ -93,8 +91,8 @@ void task_motor_test(void *params)
 void app_main(void)
 {
     // task_mpu_test(NULL);
-    // xTaskCreatePinnedToCore(task_as5600_test, "task_as5600", 2048 * 4, NULL, 3, NULL, 1);
-    // xTaskCreatePinnedToCore(task_motor_test, "task_motor", 2048 * 4, NULL, 3, NULL, 1);
+    xTaskCreatePinnedToCore(task_as5600_update, "task_as5600", 2048 * 4, NULL, 3, NULL, 1);
+    xTaskCreatePinnedToCore(task_motor_test, "task_motor", 2048 * 4, NULL, 3, NULL, 1);
     xTaskCreatePinnedToCore(task_btn_test, "task_btn", 2048 * 4, NULL, 3, NULL, 1);
     // xTaskCreatePinnedToCore(task_btn_test_queue, "task_btn", 2048 * 4, NULL, 3, NULL, 1);
 }

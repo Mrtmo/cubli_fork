@@ -1,5 +1,6 @@
 {
   "C_Cpp.intelliSenseEngine": "default",
   "idf.flashType": "UART",
-  "idf.port": "/dev/tty.usbserial-840"
+  "idf.port": "/dev/tty.usbserial-840",
+  "idf.portWin": "COM5"
 }
