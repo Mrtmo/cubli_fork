@@ -18,7 +18,7 @@
 i2c_as5600_handle_t motor_as5600_handle;
 
 float voltage_power_supply = 12.0;  // 电机额定电压
-float voltage_power_limit = 12.0;   // 电机额定电压
+float voltage_power_limit = 11.0;   // 电机额定电压
 int pole_pairs = 7;                 // 电机极对数
 float Ua = 0, Ub = 0, Uc = 0;       // 三相电电压
 float dc_a = 0, dc_b = 0, dc_c = 0; // 三相电占空比
@@ -184,15 +184,21 @@ void weizhi_loop(float motor_target)
 
 
     // 获取 0 电度角时编码器角度
-    set_phase_voltage(0, 3, _3PI_2);
+    set_phase_voltage(0, 6, _3PI_2);
     vTaskDelay(pdMS_TO_TICKS(3000));
+    ESP_ERROR_CHECK(as5600_update(motor_as5600_handle));
     zero_electric_angle = _electricalAngle();
     set_phase_voltage(0, 0, _3PI_2);
 
     while(1)
     {
+        ESP_ERROR_CHECK(as5600_update(motor_as5600_handle));
         Sensor_Angle = as5600_get_angle_cycle(motor_as5600_handle);
-        printf("as_angle: %f, minns_angle: %f, zero_angle: %f\n", Sensor_Angle, motor_target - DIR * Sensor_Angle * 180 / M_PI, zero_electric_angle);
-        set_phase_voltage(0, _constrain(Kp * (motor_target - DIR * Sensor_Angle) * 180 / M_PI, -6.0, 6.0), _electricalAngle());
+
+
+
+        
+        printf("as_angle: %f, minns_angle: %f, zero_angle: %f\n", Sensor_Angle * 180 / M_PI, motor_target - DIR * Sensor_Angle * 180 / M_PI, zero_electric_angle);
+        set_phase_voltage(0, _constrain(Kp * (motor_target - DIR * Sensor_Angle) * 180.0 / M_PI, -6.0, 6.0), _electricalAngle());
     }
 }
