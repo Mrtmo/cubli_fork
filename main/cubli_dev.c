@@ -87,13 +87,25 @@ void task_motor_test(void *params)
     weizhi_loop(0.f / 180 * M_PI);
 }
 
+void task_motor_velocity_openloop_test(void *params)
+{
+    ESP_ERROR_CHECK(as5600_init(AS5600_ADDRESS, AS5600_SCL_IO_PIN, AS5600_SDA_IO_PIN, &as5600_handle));
+    motor_link_as5600(as5600_handle);
+    motor_pwm_init(pwm1, pwm2, pwm3, pwm_enable);
+    motor_enable();
+    while (1)
+    {
+        velocity_openloop(10.f);
+    }
+    // weizhi_loop(0.f / 180 * M_PI);
+}
 
 
 void app_main(void)
 {
     // task_mpu_test(NULL);
-    // xTaskCreatePinnedToCore(task_as5600_update, "task_as5600", 2048 * 4, NULL, 3, NULL, 1);
-    xTaskCreatePinnedToCore(task_motor_test, "task_motor", 2048 * 4, NULL, 3, NULL, 1);
+    xTaskCreatePinnedToCore(task_motor_test, "task_as5600", 2048 * 4, NULL, 3, NULL, 1);
+    // xTaskCreatePinnedToCore(task_motor_test, "task_motor", 2048 * 4, NULL, 3, NULL, 1);
     xTaskCreatePinnedToCore(task_btn_test, "task_btn", 2048 * 4, NULL, 3, NULL, 1);
     // xTaskCreatePinnedToCore(task_btn_test_queue, "task_btn", 2048 * 4, NULL, 3, NULL, 1);
 }

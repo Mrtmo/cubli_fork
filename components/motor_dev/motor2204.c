@@ -29,7 +29,7 @@ float open_loop_timestamp = 0;      // 开环控制时间戳
 float shaft_angle = 0;              // 机械角度
 gpio_num_t g_pwm_enable = 1;
 
-int DIR = 1;
+int DIR = -1;
 
 // 电角度求解
 static float _electrical_angle(float shaft_angle, int pole_pairs)
@@ -195,10 +195,7 @@ void weizhi_loop(float motor_target)
         ESP_ERROR_CHECK(as5600_update(motor_as5600_handle));
         Sensor_Angle = as5600_get_angle_cycle(motor_as5600_handle);
 
-
-
-        
-        printf("as_angle: %f, minns_angle: %f, zero_angle: %f\n", Sensor_Angle * 180 / M_PI, motor_target - DIR * Sensor_Angle * 180 / M_PI, zero_electric_angle);
+        // printf("as_angle: %f, voltage: %f, _electricalAngle: %f\n", Sensor_Angle * 180 / M_PI, _constrain(Kp * (motor_target - DIR * Sensor_Angle) * 180.0 / M_PI, -6.0, 6.0), _electricalAngle());
         set_phase_voltage(0, _constrain(Kp * (motor_target - DIR * Sensor_Angle) * 180.0 / M_PI, -6.0, 6.0), _electricalAngle());
     }
 }
